@@ -48,13 +48,40 @@ if uploaded_file is not None:
         st.stop()
 
     # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
+    # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
     def clean_supplier_group(row):
         group = row['Supplier Group']
         supplier = str(row['Supplier Name'])
+        country = str(row['Survey Country'])
         
-        # If the group is blank, fill it directly with the name of the supplier vendor
+        # Short country code generation for standard labels
+        country_map = {
+            'United Kingdom': 'UK',
+            'United States': 'US',
+            'France': 'France',
+            'India': 'India',
+            'Spain': 'Spain',
+            'Ireland': 'Ireland'
+        }
+        c_code = country_map.get(country, country)
+        
+        # Check if the group is blank/NaN
         if pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']:
-            return supplier
+            # UK-Specific Overrides for the red-highlighted suppliers
+            if c_code == 'UK':
+                if 'CPX Research' in supplier or 'Prodege' in supplier or 'Tap Research' in supplier:
+                    return 'UK_Group_3'
+                elif 'Prime Insights' in supplier:
+                    return 'UK_Group_MP' # Keeps Prime Insights distinct as requested prior
+            
+            # Standard fallbacks for other markets if blank
+            if 'Prime Insights' in supplier:
+                return f"{c_code}_Group_MP"
+            elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
+                return f"{c_code}_Group_3"
+            else:
+                return supplier
+                
         return group
 
     # Apply the mapping transformation layer
