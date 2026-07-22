@@ -210,4 +210,4 @@ if uploaded_file is not None:
             
             # 4. Global Grand Summary Footer
             st.markdown("---")
-            st.markdown(f"📊 **Market Grand Total Summary** ｜ **W1:** {grand_total_
+            st.markdown(f"📊 **Market Grand Total Summary** ｜ **W1:** {grand_total_w1} (100%) ｜ **W2:** {grand_total_w2} (100%) ｜ **W3:** {grand_total_w3} (100%) ｜ **Overall Total:** {overall_total} (100%)")
