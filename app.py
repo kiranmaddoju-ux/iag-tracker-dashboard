@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration & Title Styling
+# 1. Page Configuration & Setup
 st.set_page_config(page_title="IAG Global Tracker Blend Dashboard", layout="wide")
 
 st.title("📊 IAG Global Tracker Operations Portal")
@@ -47,58 +47,51 @@ if uploaded_file is not None:
         st.error(f"Required date column '{date_col}' missing from uploaded file.")
         st.stop()
 
-    # Dynamic Supplier Group Fallback Mapping (Country-Safe Version)
+    # Master Core Rule Alignment Map
     def clean_supplier_group(row):
         group = row['Supplier Group']
-        supplier = str(row['Supplier Name'])
-        country = str(row['Survey Country'])
+        supplier = str(row['Supplier Name']).strip()
+        country = str(row['Survey Country']).strip()
         
-        # Short country code generation for standard labels
-        country_map = {
-            'United Kingdom': 'UK',
-            'United States': 'US',
-            'France': 'France',
-            'India': 'India',
-            'Spain': 'Spain',
-            'Ireland': 'Ireland'
-        }
-        c_code = country_map.get(country, country)
+        # Check if the data cell is blank/NaN
+        is_blank = pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']
         
-        # Check if the group is blank/NaN
-        if pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']:
-            
-            # --- UNITED KINGDOM SPECIFIC RULES ---
-            if c_code == 'UK':
-                if 'Prime Insights' in supplier:
-                    return 'Prime Insights API' # Keeps it a separate entity for UK
-                elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
-                    return 'UK_Group_3'          # Routes blanks safely to Group 3
-                else:
-                    return supplier
+        # --- FRANCE ---
+        if country == 'France':
+            if is_blank:
+                if 'Prime Insights' in supplier: return 'France_group_3'
+                if 'CPX Research' in supplier: return 'France_group_2'
+                if 'Tap Research' in supplier: return 'France_group_3'
+            return group
 
-            # --- FRANCE SPECIFIC RULES (Kept exactly as initial blend requirements) ---
-            elif c_code == 'France':
-                if 'Prime Insights' in supplier:
-                    return 'France_group_3' # Or whichever specific composite block you want to target
-                elif 'CPX Research' in supplier:
-                    return 'France_group_2'
-                elif 'Tap Research' in supplier:
-                    return 'France_group_3'
-                else:
-                    return supplier
+        # --- UNITED KINGDOM ---
+        elif country == 'United Kingdom':
+            if 'Prime Insights' in supplier: 
+                return 'Prime Insights API' # Explicitly isolated separate entity rule
+            if is_blank or 'UK_Group_3' in str(group) or 'CPX' in supplier or 'Prodege' in supplier or 'Tap' in supplier:
+                if 'Fusion' in supplier: return 'UK_Group_2'
+                return 'UK_Group_3'
+            return group
 
-            # --- OTHER GLOBAL MARKETS FALLBACKS ---
-            else:
-                if 'Prime Insights' in supplier:
-                    return f"{c_code}_Group_MP"
-                elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
-                    return f"{c_code}_Group_3"
-                else:
-                    return supplier
-                
-        return group
+        # --- IRELAND ---
+        elif country == 'Ireland':
+            if 'Prime Insights' in supplier: 
+                return 'Prime Insights API' # Match your excel screenshot mapping
+            if is_blank:
+                if supplier in ['AttaPoll', 'Fusion']: return 'Ireland_Group_2'
+                return 'Ireland_Group_3'
+            return group
 
-    # Apply the mapping transformation layer
+        # --- ALL OTHER GLOBAL MARKETS DEFAULT AUTOMATION ---
+        else:
+            if is_blank:
+                country_map = {'United States': 'US', 'Spain': 'Spain', 'India': 'India'}
+                c_code = country_map.get(country, country)
+                if 'Prime Insights' in supplier: return f"{c_code}_Group_MP"
+                return f"{c_code}_Group_3"
+            return group
+
+    # Execute custom clean mapping layer
     df['Cleaned Supplier Group'] = df.apply(clean_supplier_group, axis=1)
 
     # Filter for Completes Only for the Blend calculations
@@ -127,7 +120,7 @@ if uploaded_file is not None:
 
     st.markdown("---")
     
-    # 4. Market Selector Dropdown (Guarantees all 6 markets are available)
+    # 4. Market Selector Dropdown
     countries = ['France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
     selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend Splits:", countries)
     
@@ -136,20 +129,14 @@ if uploaded_file is not None:
         
         st.markdown(f"## 🏛️ {selected_country} - Supplier Performance Breakdown (Completes Only)")
         
-        # Build Table 1: Supplier Blend by Week
         if not country_df.empty:
             weeks_order = ["W1 (July 6-12)", "W2 (July 13-19)", "W3 (July 20+)"]
             
-            pivot_supp = pd.crosstab(
-                country_df['Supplier Name'], 
-                country_df['Tracking Week']
-            )
-            
-            # Keep column indexes structurally intact
+            # Build Table 1: Supplier Name Pivot
+            pivot_supp = pd.crosstab(country_df['Supplier Name'], country_df['Tracking Week'])
             for w in weeks_order:
-                if w not in pivot_supp.columns:
-                    pivot_supp[w] = 0
-            
+                if w not in pivot_supp.columns: pivot_supp[w] = 0
+                    
             pivot_supp = pivot_supp[weeks_order].copy()
             pivot_supp.loc['Grand Total'] = pivot_supp.sum()
             pivot_supp['Total'] = pivot_supp.sum(axis=1)
@@ -157,32 +144,19 @@ if uploaded_file is not None:
             blend_table = pd.DataFrame(index=pivot_supp.index)
             for week in weeks_order:
                 blend_table[week] = pivot_supp[week]
-                total_week_completes = pivot_supp.loc['Grand Total', week]
-                if total_week_completes > 0:
-                    blend_table[f"{week} %"] = (pivot_supp[week] / total_week_completes * 100).round(2).astype(str) + "%"
-                else:
-                    blend_table[f"{week} %"] = "0.00%"
+                tot = pivot_supp.loc['Grand Total', week]
+                blend_table[f"{week} %"] = (pivot_supp[week] / tot * 100).round(2).astype(str) + "%" if tot > 0 else "0.00%"
                     
             blend_table['Total'] = pivot_supp['Total']
-            total_global_completes = pivot_supp.loc['Grand Total', 'Total']
-            if total_global_completes > 0:
-                blend_table['Total %'] = (pivot_supp['Total'] / total_global_completes * 100).round(2).astype(str) + "%"
-            else:
-                blend_table['Total %'] = "0.00%"
-                
+            tot_glob = pivot_supp.loc['Grand Total', 'Total']
+            blend_table['Total %'] = (pivot_supp['Total'] / tot_glob * 100).round(2).astype(str) + "%" if tot_glob > 0 else "0.00%"
             st.dataframe(blend_table, use_container_width=True)
             
-            # Build Table 2: Composite Group Summary (Cleaned - Blanks Replaced by Vendor Name)
+            # Build Table 2: Composite Summary Table
             st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
-            
-            pivot_group = pd.crosstab(
-                country_df['Cleaned Supplier Group'], 
-                country_df['Tracking Week']
-            )
-            
+            pivot_group = pd.crosstab(country_df['Cleaned Supplier Group'], country_df['Tracking Week'])
             for w in weeks_order:
-                if w not in pivot_group.columns:
-                    pivot_group[w] = 0
+                if w not in pivot_group.columns: pivot_group[w] = 0
                     
             pivot_group = pivot_group[weeks_order].copy()
             pivot_group.loc['Grand Total'] = pivot_group.sum()
@@ -191,22 +165,14 @@ if uploaded_file is not None:
             group_table = pd.DataFrame(index=pivot_group.index)
             for week in weeks_order:
                 group_table[week] = pivot_group[week]
-                total_week_g = pivot_group.loc['Grand Total', week]
-                if total_week_g > 0:
-                    group_table[f"{week} %"] = (pivot_group[week] / total_week_g * 100).round(2).astype(str) + "%"
-                else:
-                    group_table[f"{week} %"] = "0.00%"
+                tot_g = pivot_group.loc['Grand Total', week]
+                group_table[f"{week} %"] = (pivot_group[week] / tot_g * 100).round(2).astype(str) + "%" if tot_g > 0 else "0.00%"
                     
             group_table['Total'] = pivot_group['Total']
-            total_global_g = pivot_group.loc['Grand Total', 'Total']
-            if total_global_g > 0:
-                group_table['Total %'] = (pivot_group['Total'] / total_global_g * 100).round(2).astype(str) + "%"
-            else:
-                group_table['Total %'] = "0.00%"
-                
+            tot_gg = pivot_group.loc['Grand Total', 'Total']
+            group_table['Total %'] = (pivot_group['Total'] / tot_gg * 100).round(2).astype(str) + "%" if tot_gg > 0 else "0.00%"
             st.dataframe(group_table, use_container_width=True)
         else:
-            st.warning(f"No complete records currently available for {selected_country} in the uploaded loop dataset.")
-
+            st.warning(f"No complete records currently available for {selected_country} in the uploaded dataset.")
 else:
-    st.info("👋 Welcome! Please upload your raw refreshed 'survey_All_0.csv' file in the left sidebar to render the live tracking metrics.")
+    st.info("👋 Welcome! Please upload your tracking data CSV file in the left sidebar to generate the live supplier blend splits.")
