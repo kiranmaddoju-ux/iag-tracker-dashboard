@@ -48,7 +48,6 @@ if uploaded_file is not None:
         st.stop()
 
     # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
-    # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
     def clean_supplier_group(row):
         group = row['Supplier Group']
         supplier = str(row['Supplier Name'])
@@ -67,16 +66,11 @@ if uploaded_file is not None:
         
         # Check if the group is blank/NaN
         if pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']:
-            # UK-Specific Overrides for the red-highlighted suppliers
-            if c_code == 'UK':
-                if 'CPX Research' in supplier or 'Prodege' in supplier or 'Tap Research' in supplier:
-                    return 'UK_Group_3'
-                elif 'Prime Insights' in supplier:
-                    return 'UK_Group_MP' # Keeps Prime Insights distinct as requested prior
-            
-            # Standard fallbacks for other markets if blank
+            # Rule 1: Prime Insights API always remains its own separate entity name globally
             if 'Prime Insights' in supplier:
-                return f"{c_code}_Group_MP"
+                return 'Prime Insights API'
+                
+            # Rule 2: Redirect all other blank loop sources to Group 3
             elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
                 return f"{c_code}_Group_3"
             else:
