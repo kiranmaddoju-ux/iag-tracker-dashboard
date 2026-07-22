@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration & Native Styling
-st.set_page_config(page_title="IAG Global Tracker Dashboard", layout="wide")
+# 1. Page Configuration
+st.set_page_config(page_title="IAG Global Tracker Blend Dashboard", layout="wide")
 
 st.title("📊 IAG Global Tracker Operations Portal")
-st.caption("Wave 2 & Week 3 Live Performance Ledger & Supplier Analytics")
+st.caption("Wave-over-Wave Supplier Blend & Composite Group Analytics")
 st.markdown("---")
 
 # 2. Sidebar - Secure Ingestion & Handover Instructions
@@ -25,94 +25,126 @@ st.sidebar.markdown("""
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file, low_memory=False)
     
-    total_clicks = len(df)
-    completes_df = df[df['Respondent Status Description'] == 'Complete']
-    total_completes = len(completes_df)
-    
-    # Financial and Volume Metrics
-    project_margin = "46.88%"
-    profit_dollars = "$1,066"
-    target_achievement = "96%"
-    
-    # Display Executive Metric Cards using native safe blocks
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        with st.container(border=True):
-            st.markdown("**Overall Project Margin**")
-            st.markdown(f"### :green[{project_margin}]")
-            st.caption(f"{profit_dollars} profit")
-    with col2:
-        with st.container(border=True):
-            st.markdown("**Target Achievement Rate**")
-            st.markdown(f"### :blue[{target_achievement}]")
-            st.caption("Weekly Volume")
-    with col3:
-        with st.container(border=True):
-            st.markdown("**Global Quota Full Rate**")
-            quota_full_global_pct = round((len(df[df['Respondent Status Description'] == 'Buyer_QuotaFull']) / total_clicks) * 100, 1)
-            st.markdown(f"### :red[{quota_full_global_pct}%]")
-            st.caption("Traffic Blocked")
-
-    st.markdown("---")
-    
-    # 4. Market Health Section
-    st.header("🗺️ Country Market Diagnostics & Incidence Rates")
-    
-    country_stats = df.groupby('Survey Country').agg(
-        Total_Traffic=('Respondent Status Description', 'count'),
-        Completes=('Respondent Status Description', lambda x: (x == 'Complete').sum()),
-        Quota_Fulls=('Respondent Status Description', lambda x: (x == 'Buyer_QuotaFull').sum()),
-        Terminations=('Respondent Status Description', lambda x: (x == 'Buyer_Termination').sum())
-    ).reset_index()
-    
-    country_stats['Quota Full %'] = (country_stats['Quota_Fulls'] / country_stats['Total_Traffic'] * 100).round(1)
-    country_stats['Actual IR %'] = (country_stats['Completes'] / (country_stats['Completes'] + country_stats['Terminations'] + 1e-9) * 100).round(1)
-    
-    st.dataframe(country_stats.style.highlight_max(axis=0, color="#fee2e2", subset=['Quota Full %']), use_container_width=True)
-    
-    # Dual Axis Visualization
-    fig, ax1 = plt.subplots(figsize=(12, 4))
-    x_indices = range(len(country_stats['Survey Country']))
-    width = 0.35
-    
-    ax1.bar([i - width/2 for i in x_indices], country_stats['Quota Full %'], width, label='Quota Full %', color='#ea580c', alpha=0.85)
-    ax1.set_ylabel('Quota Full Rate (%)', color='#ea580c', fontweight='bold')
-    ax1.set_xticks(x_indices)
-    ax1.set_xticklabels(country_stats['Survey Country'])
-    
-    ax2 = ax1.twinx()
-    ax2.bar([i + width/2 for i in x_indices], country_stats['Actual IR %'], width, label='Actual IR %', color='#1e3a8a', alpha=0.85)
-    ax2.set_ylabel('Actual Incidence Rate (%)', color='#1e3a8a', fontweight='bold')
-    
-    plt.title('Visual Diagnostics: Quota Spherics vs. Local Market IR', fontweight='bold')
-    st.pyplot(fig)
-    
-    st.markdown("---")
-    
-    # 5. Supplier Cross-Tab Performance Matrix
-    st.header("🏁 Supplier Allocation & Cell Performance Cross-Tab")
-    
-    supplier_list = df['Supplier Name'].value_counts().index.tolist()
-    matrix_data = []
-    
-    for supplier in supplier_list:
-        row = {'Supplier Partner Name': supplier}
-        s_completes = len(df[(df['Supplier Name'] == supplier) & (df['Respondent Status Description'] == 'Complete')])
-        row['Global Share %'] = f"{round((s_completes / (total_completes if total_completes > 0 else 1)) * 100, 1)}% ({s_completes} cases)"
+    # Identify the date column
+    date_col = None
+    for col in df.columns:
+        if 'entry datetime' in col.lower() or 'ps entry' in col.lower():
+            date_col = col
+            break
+            
+    if date_col:
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
         
-        for country in country_stats['Survey Country']:
-            sub = df[(df['Supplier Name'] == supplier) & (df['Survey Country'] == country)]
-            t_vol = len(sub)
-            if t_vol == 0:
-                row[country] = "-"
+        # Define Weeks based on exact date boundaries
+        def assign_tracking_week(row_date):
+            if pd.isnull(row_date):
+                return "Unknown"
+            if row_date.month == 7 and 6 <= row_date.day <= 12:
+                return "W1 (July 6-12)"
+            elif row_date.month == 7 and 13 <= row_date.day <= 19:
+                return "W2 (July 13-19)"
+            elif row_date.month == 7 and row_date.day >= 20:
+                return "W3 (July 20+)"
             else:
-                c_cnt = len(sub[sub['Respondent Status Description'] == 'Complete'])
-                q_cnt = len(sub[sub['Respondent Status Description'] == 'Buyer_QuotaFull'])
-                q_pct = round((q_cnt / t_vol) * 100, 1)
-                row[country] = f"C: {c_cnt} | QF: {q_pct}%"
-        matrix_data.append(row)
+                return "Baseline/Pre-Field"
+                
+        df['Tracking Week'] = df[date_col].apply(assign_tracking_week)
+    else:
+        # Fallback if no date column found: use string matching on project names
+        def fallback_week(proj_name):
+            proj_str = str(proj_name).lower()
+            if 'wave 1' in proj_str or 'w1' in proj_str:
+                return "W1 (July 6-12)"
+            elif 'wave 2' in proj_str or 'w2' in proj_str:
+                return "W2 (July 13-19)"
+            else:
+                return "W3 (July 20+)"
         
-    st.dataframe(pd.DataFrame(matrix_data), use_container_width=True)
+        df['Tracking Week'] = df['Project Name'].apply(fallback_week)
+
+    # Filter for Completes Only for the Blend calculations
+    completes_only_df = df[df['Respondent Status Description'] == 'Complete'].copy()
+    
+    # 4. Market Selector Dropdown
+    countries = sorted(completes_only_df['Survey Country'].dropna().unique().tolist())
+    selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend:", countries)
+    
+    if selected_country:
+        country_df = completes_only_df[completes_only_df['Survey Country'] == selected_country]
+        
+        st.markdown(f"## 🏛️ {selected_country} - Supplier Performance Breakdown (Completes Only)")
+        
+        # Build Table 1: Supplier Blend by Week
+        if not country_df.empty:
+            pivot_supp = pd.crosstab(
+                country_df['Supplier Name'], 
+                country_df['Tracking Week'], 
+                margins=True, 
+                margins_name='Grand Total'
+            )
+            
+            # Calculate percentages just like Excel
+            blend_table = pd.DataFrame()
+            weeks_present = [c for c in pivot_supp.columns if c != 'Grand Total']
+            
+            for week in weeks_present:
+                blend_table[week] = pivot_supp[week]
+                total_week_completes = pivot_supp.loc['Grand Total', week]
+                if total_week_completes > 0:
+                    blend_table[f"{week} %"] = (pivot_supp[week] / total_week_completes * 100).round(2).astype(str) + "%"
+                else:
+                    blend_table[f"{week} %"] = "0.00%"
+                    
+            blend_table['Total'] = pivot_supp['Grand Total']
+            total_global_completes = pivot_supp.loc['Grand Total', 'Grand Total']
+            if total_global_completes > 0:
+                blend_table['Total %'] = (pivot_supp['Grand Total'] / total_global_completes * 100).round(2).astype(str) + "%"
+            else:
+                blend_table['Total %'] = "0.00%"
+                
+            st.dataframe(blend_table, use_container_width=True)
+            
+            # Build Table 2: Composite Group Summary
+            st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
+            
+            # Look for composite group columns dynamically
+            group_col = None
+            for col in df.columns:
+                if 'group' in col.lower() or 'composite' in col.lower():
+                    group_col = col
+                    break
+            
+            if not group_col:
+                # If no specific composite column exists, fallback to cleaning up tracking links or clone labels
+                country_df['Supplier Group (Composite)'] = country_df['Project Name'].apply(lambda x: str(proj_name).split('-')[0] if '-' in str(x) else 'Main Blend')
+                group_col = 'Supplier Group (Composite)'
+                
+            pivot_group = pd.crosstab(
+                country_df[group_col].fillna('(blank)'), 
+                country_df['Tracking Week'], 
+                margins=True, 
+                margins_name='Grand Total'
+            )
+            
+            group_table = pd.DataFrame()
+            for week in weeks_present:
+                group_table[week] = pivot_group[week]
+                total_week_g = pivot_group.loc['Grand Total', week]
+                if total_week_g > 0:
+                    group_table[f"{week} %"] = (pivot_group[week] / total_week_g * 100).round(2).astype(str) + "%"
+                else:
+                    group_table[f"{week} %"] = "0.00%"
+                    
+            group_table['Total'] = pivot_group['Grand Total']
+            total_global_g = pivot_group.loc['Grand Total', 'Grand Total']
+            if total_global_g > 0:
+                group_table['Total %'] = (pivot_group['Grand Total'] / total_global_g * 100).round(2).astype(str) + "%"
+            else:
+                group_table['Total %'] = "0.00%"
+                
+            st.dataframe(group_table, use_container_width=True)
+        else:
+            st.warning(f"No complete data available for {selected_country} in the uploaded file yet.")
 
 else:
-    st.info("👋 Welcome! Please upload your latest tracking data loop CSV file in the left sidebar to generate the live operational report.")
+    st.info("👋 Welcome! Please upload your latest tracking data loop CSV file in the left sidebar to generate the live supplier blend splits.")
