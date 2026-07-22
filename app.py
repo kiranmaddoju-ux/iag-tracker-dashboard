@@ -138,14 +138,18 @@ if uploaded_file is not None:
 
     st.markdown("---")
     
-    # 4. Market Selector Dropdown
-    countries = ['France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
-    selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend Splits:", countries)
+    # 4. Market Selector Dropdown (Added Overall View Option)
+    countries_options = ['Overall / All Markets', 'France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
+    selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend Splits:", countries_options)
     
     if selected_country:
-        country_df = completes_only_df[completes_only_df['Survey Country'] == selected_country]
-        
-        st.markdown(f"## 🏛️ {selected_country} - Supplier Performance Breakdown (Completes Only)")
+        # If 'Overall' is chosen, process the entire completes dataset together
+        if selected_country == 'Overall / All Markets':
+            country_df = completes_only_df
+            st.markdown(f"## 🏛️ Global Overview - Supplier Performance Breakdown (All Markets Combined)")
+        else:
+            country_df = completes_only_df[completes_only_df['Survey Country'] == selected_country]
+            st.markdown(f"## 🏛️ {selected_country} - Supplier Performance Breakdown (Completes Only)")
         
         if not country_df.empty:
             weeks_order = ["W1 (July 6-12)", "W2 (July 13-19)", "W3 (July 20+)"]
@@ -171,7 +175,11 @@ if uploaded_file is not None:
             st.dataframe(blend_table, use_container_width=True)
             
             # Build Table 2: Composite Summary Table (Clean & Simple)
-            st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
+            if selected_country == 'Overall / All Markets':
+                st.markdown(f"## 👥 Global Overview - Supplier Group Summary (All Markets Combined)")
+            else:
+                st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
+                
             pivot_group = pd.crosstab(country_df['Cleaned Supplier Group'], country_df['Tracking Week'])
             for w in weeks_order:
                 if w not in pivot_group.columns: pivot_group[w] = 0
@@ -203,7 +211,10 @@ if uploaded_file is not None:
             st.markdown("---")
             
             # --- PRE-DEFINED INTERNAL MASTER EXCEL LOOKUP ---
-            st.markdown(f"📋 **{selected_country} - Pre-Defined Internal Allocation Reference Rules**")
+            if selected_country == 'Overall / All Markets':
+                st.markdown(f"📋 **Global Overview - All Pre-Defined Internal Allocation Reference Rules**")
+            else:
+                st.markdown(f"📋 **{selected_country} - Pre-Defined Internal Allocation Reference Rules**")
             
             try:
                 # Core Engine Safeguard: Dynamically check or handle openpyxl installation on cloud
@@ -220,14 +231,19 @@ if uploaded_file is not None:
                 # Fill down Country names from Column A to fix the spacing gap rows
                 master_excel[0] = master_excel[0].ffill()
                 
-                # Filter rows matching the active selector market country name
-                matched_rows = master_excel[master_excel[0].astype(str).str.strip().str.lower() == selected_country.lower()]
+                # Filter rows matching the active selector market country name (or show all if Overall)
+                if selected_country == 'Overall / All Markets':
+                    matched_rows = master_excel.dropna(subset=[1, 2, 3])
+                else:
+                    matched_rows = master_excel[master_excel[0].astype(str).str.strip().str.lower() == selected_country.lower()]
                 
                 if not matched_rows.empty:
                     sub_data = []
-                    headers = ["Group Assignments", "supNm", "Allocation"]
+                    # Add a country header column if viewing the Overall option
+                    headers = ["Country", "Group Assignments", "supNm", "Allocation"] if selected_country == 'Overall / All Markets' else ["Group Assignments", "supNm", "Allocation"]
                     
                     for idx, row in matched_rows.iterrows():
+                        val_a = str(row[0]).strip()
                         val_b = str(row[1]).strip()
                         val_c = str(row[2]).strip()
                         val_d = str(row[3]).strip()
@@ -237,6 +253,7 @@ if uploaded_file is not None:
                             continue
                             
                         # Clean up displays for empty cell fields safely
+                        disp_a = "" if val_a == "nan" else val_a
                         disp_b = "" if val_b == "nan" else val_b
                         disp_c = "" if val_c == "nan" else val_c
                         
@@ -245,7 +262,6 @@ if uploaded_file is not None:
                         if val_d != "nan":
                             try:
                                 num_val = float(val_d)
-                                # Map fractions safely into full corporate percent text styles
                                 if num_val <= 1.0:
                                     disp_d = f"{num_val * 100:.0f}%"
                                 else:
@@ -253,20 +269,23 @@ if uploaded_file is not None:
                             except ValueError:
                                 disp_d = val_d if "%" in val_d else f"{val_d}%"
                         
-                        sub_data.append([disp_b, disp_c, disp_d])
+                        if selected_country == 'Overall / All Markets':
+                            sub_data.append([disp_a, disp_b, disp_c, disp_d])
+                        else:
+                            sub_data.append([disp_b, disp_c, disp_d])
                         
                     if sub_data:
                         reference_df = pd.DataFrame(sub_data, columns=headers)
                         st.dataframe(reference_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"ℹ️ Internal master allocation tables for {selected_country} are empty.")
+                        st.info(f"ℹ️ Internal master allocation reference data is empty.")
                 else:
-                    st.info(f"ℹ️ No internal target rules are currently listed for {selected_country} in the master Excel sheet.")
+                    st.info(f"ℹ️ No internal target rules are currently listed in the master Excel sheet.")
                     
             except FileNotFoundError:
                 st.info("💡 **Operational Note:** To display your master definitions here, name your created workbook `internal_master_rules.xlsx` and push it to your GitHub directory right next to `app.py`!")
                 
         else:
-            st.warning(f"No complete records currently available for {selected_country} in the uploaded dataset.")
+            st.warning(f"No complete records currently available in the uploaded dataset.")
 else:
     st.info("👋 Welcome! Please upload your tracking data CSV file in the left sidebar to generate the live supplier blend splits.")
