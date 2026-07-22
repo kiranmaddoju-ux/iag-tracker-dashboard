@@ -62,7 +62,6 @@ if uploaded_file is not None:
                 return 'Prime Insights API'
             if 'Social Loop' in supplier:
                 return 'Social Loop'
-            # Force everything else into US_Group_3
             return 'US_Group_3'
 
         # --- INDIA SPECIFIC ALIGNMENT ---
@@ -193,13 +192,61 @@ if uploaded_file is not None:
             st.dataframe(group_table, use_container_width=True)
             
             # --- SIMPLE HIERARCHY KEY LIST ---
-            st.markdown("### 🔍 Group Membership Reference")
+            st.markdown("### 🔍 Live Group Membership Reference")
             unique_groups_list = sorted([g for g in country_df['Cleaned Supplier Group'].unique() if pd.notna(g)])
             
             for group_item in unique_groups_list:
                 associated_suppliers = sorted(country_df[country_df['Cleaned Supplier Group'] == group_item]['Supplier Name'].unique())
                 suppliers_str = ", ".join(associated_suppliers)
                 st.markdown(f"📦 **{group_item}** contains: *{suppliers_str}*")
+                
+            st.markdown("---")
+            
+            # --- PRE-DEFINED INTERNAL MASTER EXCEL LOOKUP ---
+            st.markdown(f"📋 **{selected_country} - Pre-Defined Internal Allocation Reference Rules**")
+            
+            try:
+                # Read the file directly from the GitHub repository folder
+                master_excel = pd.read_excel("internal_master_rules.xlsx", header=None)
+                
+                # Fill down Country names from Column A to fix the spacing gap rows
+                master_excel[0] = master_excel[0].ffill()
+                
+                # Filter rows matching the active selector market country name
+                matched_rows = master_excel[master_excel[0].astype(str).str.strip().str.lower() == selected_country.lower()]
+                
+                if not matched_rows.empty:
+                    # Construct a clean sub-dataframe from the matched chunk matrix positions
+                    sub_data = []
+                    headers = ["Group Assignments", "supNm", "Allocation"]
+                    
+                    for idx, row in matched_rows.iterrows():
+                        val_b = str(row[1]).strip()
+                        val_c = str(row[2]).strip()
+                        val_d = str(row[3]).strip()
+                        
+                        # Exclude duplicate structural text headers inside the blocks
+                        if val_b.lower() == "group assignments" or (val_b == "nan" and val_c == "nan" and val_d == "nan"):
+                            continue
+                            
+                        # Clean up displays for empty allocation cell rows safely
+                        disp_b = "" if val_b == "nan" else val_b
+                        disp_c = "" if val_c == "nan" else val_c
+                        disp_d = "" if val_d == "nan" else val_d
+                        
+                        sub_data.append([disp_b, disp_c, disp_d])
+                        
+                    if sub_data:
+                        reference_df = pd.DataFrame(sub_data, columns=headers)
+                        st.dataframe(reference_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"ℹ️ Internal master allocation tables for {selected_country} are empty.")
+                else:
+                    st.info(f"ℹ️ No internal target rules are currently listed for {selected_country} in the master Excel sheet.")
+                    
+            except FileNotFoundError:
+                st.info("💡 **Operational Note:** To display your master definitions here, name your created workbook `internal_master_rules.xlsx` and push it to your GitHub directory right next to `app.py`!")
+                
         else:
             st.warning(f"No complete records currently available for {selected_country} in the uploaded dataset.")
 else:
