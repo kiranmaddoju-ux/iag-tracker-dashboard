@@ -206,6 +206,14 @@ if uploaded_file is not None:
             st.markdown(f"📋 **{selected_country} - Pre-Defined Internal Allocation Reference Rules**")
             
             try:
+                # Core Engine Safeguard: Dynamically check or handle openpyxl installation on cloud
+                try:
+                    import openpyxl
+                except ImportError:
+                    import subprocess
+                    import sys
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
+                
                 # Read the file directly from the GitHub repository folder
                 master_excel = pd.read_excel("internal_master_rules.xlsx", header=None)
                 
@@ -216,7 +224,6 @@ if uploaded_file is not None:
                 matched_rows = master_excel[master_excel[0].astype(str).str.strip().str.lower() == selected_country.lower()]
                 
                 if not matched_rows.empty:
-                    # Construct a clean sub-dataframe from the matched chunk matrix positions
                     sub_data = []
                     headers = ["Group Assignments", "supNm", "Allocation"]
                     
@@ -229,10 +236,22 @@ if uploaded_file is not None:
                         if val_b.lower() == "group assignments" or (val_b == "nan" and val_c == "nan" and val_d == "nan"):
                             continue
                             
-                        # Clean up displays for empty allocation cell rows safely
+                        # Clean up displays for empty cell fields safely
                         disp_b = "" if val_b == "nan" else val_b
                         disp_c = "" if val_c == "nan" else val_c
-                        disp_d = "" if val_d == "nan" else val_d
+                        
+                        # Smart Decimal/Percentage Formatter for Allocation Target Output Column
+                        disp_d = ""
+                        if val_d != "nan":
+                            try:
+                                num_val = float(val_d)
+                                # Map fractions safely into full corporate percent text styles
+                                if num_val <= 1.0:
+                                    disp_d = f"{num_val * 100:.0f}%"
+                                else:
+                                    disp_d = f"{num_val:.0f}%"
+                            except ValueError:
+                                disp_d = val_d if "%" in val_d else f"{val_d}%"
                         
                         sub_data.append([disp_b, disp_c, disp_d])
                         
