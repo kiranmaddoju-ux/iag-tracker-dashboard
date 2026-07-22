@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration
+# 1. Page Configuration & Setup
 st.set_page_config(page_title="IAG Global Tracker Blend Dashboard", layout="wide")
 
 st.title("📊 IAG Global Tracker Operations Portal")
@@ -25,17 +25,11 @@ st.sidebar.markdown("""
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file, low_memory=False)
     
-    # Identify the date column
-    date_col = None
-    for col in df.columns:
-        if 'entry datetime' in col.lower() or 'ps entry' in col.lower():
-            date_col = col
-            break
-            
-    if date_col:
+    # Precise timestamp tracking mapping for W1, W2, and W3
+    date_col = 'PS Entry DateTime (Pacific Time Zone)'
+    if date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
         
-        # Define Weeks based on exact date boundaries
         def assign_tracking_week(row_date):
             if pd.isnull(row_date):
                 return "Unknown"
@@ -46,28 +40,42 @@ if uploaded_file is not None:
             elif row_date.month == 7 and row_date.day >= 20:
                 return "W3 (July 20+)"
             else:
-                return "Baseline/Pre-Field"
+                return "Pre-Field / Baseline"
                 
         df['Tracking Week'] = df[date_col].apply(assign_tracking_week)
     else:
-        # Fallback if no date column found: use string matching on project names
-        def fallback_week(proj_name):
-            proj_str = str(proj_name).lower()
-            if 'wave 1' in proj_str or 'w1' in proj_str:
-                return "W1 (July 6-12)"
-            elif 'wave 2' in proj_str or 'w2' in proj_str:
-                return "W2 (July 13-19)"
-            else:
-                return "W3 (July 20+)"
-        
-        df['Tracking Week'] = df['Project Name'].apply(fallback_week)
+        st.error(f"Required date column '{date_col}' missing from uploaded file.")
+        st.stop()
 
     # Filter for Completes Only for the Blend calculations
     completes_only_df = df[df['Respondent Status Description'] == 'Complete'].copy()
     
-    # 4. Market Selector Dropdown
-    countries = sorted(completes_only_df['Survey Country'].dropna().unique().tolist())
-    selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend:", countries)
+    # Global Overview Metrics
+    total_completes = len(completes_only_df)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        with st.container(border=True):
+            st.markdown("**Total Accumulated Completes**")
+            st.markdown(f"### :green[{total_completes} Cases]")
+            st.caption("All weeks combined")
+    with col2:
+        with st.container(border=True):
+            st.markdown("**Active Tracker Markets**")
+            st.markdown("### 6 Countries")
+            st.caption("France, India, IE, ES, UK, US")
+    with col3:
+        with st.container(border=True):
+            w3_count = len(completes_only_df[completes_only_df['Tracking Week'] == "W3 (July 20+)"])
+            st.markdown("**Week 3 Completes Progress**")
+            st.markdown(f"### :blue[{w3_count} Cases]")
+            st.caption("Pacing from July 20 onward")
+
+    st.markdown("---")
+    
+    # 4. Market Selector Dropdown (Guarantees all 6 markets are available)
+    countries = ['France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
+    selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend Splits:", countries)
     
     if selected_country:
         country_df = completes_only_df[completes_only_df['Survey Country'] == selected_country]
@@ -76,18 +84,26 @@ if uploaded_file is not None:
         
         # Build Table 1: Supplier Blend by Week
         if not country_df.empty:
+            # Enforce tracking week columns to maintain structure even if a week is blank
+            weeks_order = ["W1 (July 6-12)", "W2 (July 13-19)", "W3 (July 20+)"]
+            
             pivot_supp = pd.crosstab(
                 country_df['Supplier Name'], 
-                country_df['Tracking Week'], 
-                margins=True, 
-                margins_name='Grand Total'
+                country_df['Tracking Week']
             )
             
-            # Calculate percentages just like Excel
-            blend_table = pd.DataFrame()
-            weeks_present = [c for c in pivot_supp.columns if c != 'Grand Total']
+            # Ensure all tracking weeks exist in the columns for structural continuity
+            for w in weeks_order:
+                if w not in pivot_supp.columns:
+                    pivot_supp[w] = 0
             
-            for week in weeks_present:
+            pivot_supp = pivot_supp[weeks_order].copy()
+            pivot_supp.loc['Grand Total'] = pivot_supp.sum()
+            pivot_supp['Total'] = pivot_supp.sum(axis=1)
+            
+            # Construct Final Clean Data Display with Percentages
+            blend_table = pd.DataFrame(index=pivot_supp.index)
+            for week in weeks_order:
                 blend_table[week] = pivot_supp[week]
                 total_week_completes = pivot_supp.loc['Grand Total', week]
                 if total_week_completes > 0:
@@ -95,10 +111,10 @@ if uploaded_file is not None:
                 else:
                     blend_table[f"{week} %"] = "0.00%"
                     
-            blend_table['Total'] = pivot_supp['Grand Total']
-            total_global_completes = pivot_supp.loc['Grand Total', 'Grand Total']
+            blend_table['Total'] = pivot_supp['Total']
+            total_global_completes = pivot_supp.loc['Grand Total', 'Total']
             if total_global_completes > 0:
-                blend_table['Total %'] = (pivot_supp['Grand Total'] / total_global_completes * 100).round(2).astype(str) + "%"
+                blend_table['Total %'] = (pivot_supp['Total'] / total_global_completes * 100).round(2).astype(str) + "%"
             else:
                 blend_table['Total %'] = "0.00%"
                 
@@ -107,27 +123,22 @@ if uploaded_file is not None:
             # Build Table 2: Composite Group Summary
             st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
             
-            # Look for composite group columns dynamically
-            group_col = None
-            for col in df.columns:
-                if 'group' in col.lower() or 'composite' in col.lower():
-                    group_col = col
-                    break
-            
-            if not group_col:
-                # If no specific composite column exists, fallback to cleaning up tracking links or clone labels
-                country_df['Supplier Group (Composite)'] = country_df['Project Name'].apply(lambda x: str(proj_name).split('-')[0] if '-' in str(x) else 'Main Blend')
-                group_col = 'Supplier Group (Composite)'
-                
+            group_col = 'Supplier Group'
             pivot_group = pd.crosstab(
                 country_df[group_col].fillna('(blank)'), 
-                country_df['Tracking Week'], 
-                margins=True, 
-                margins_name='Grand Total'
+                country_df['Tracking Week']
             )
             
-            group_table = pd.DataFrame()
-            for week in weeks_present:
+            for w in weeks_order:
+                if w not in pivot_group.columns:
+                    pivot_group[w] = 0
+                    
+            pivot_group = pivot_group[weeks_order].copy()
+            pivot_group.loc['Grand Total'] = pivot_group.sum()
+            pivot_group['Total'] = pivot_group.sum(axis=1)
+            
+            group_table = pd.DataFrame(index=pivot_group.index)
+            for week in weeks_order:
                 group_table[week] = pivot_group[week]
                 total_week_g = pivot_group.loc['Grand Total', week]
                 if total_week_g > 0:
@@ -135,16 +146,16 @@ if uploaded_file is not None:
                 else:
                     group_table[f"{week} %"] = "0.00%"
                     
-            group_table['Total'] = pivot_group['Grand Total']
-            total_global_g = pivot_group.loc['Grand Total', 'Grand Total']
+            group_table['Total'] = pivot_group['Total']
+            total_global_g = pivot_group.loc['Grand Total', 'Total']
             if total_global_g > 0:
-                group_table['Total %'] = (pivot_group['Grand Total'] / total_global_g * 100).round(2).astype(str) + "%"
+                group_table['Total %'] = (pivot_group['Total'] / total_global_g * 100).round(2).astype(str) + "%"
             else:
                 group_table['Total %'] = "0.00%"
                 
             st.dataframe(group_table, use_container_width=True)
         else:
-            st.warning(f"No complete data available for {selected_country} in the uploaded file yet.")
+            st.warning(f"No complete records currently available for {selected_country} in the uploaded loop dataset.")
 
 else:
-    st.info("👋 Welcome! Please upload your latest tracking data loop CSV file in the left sidebar to generate the live supplier blend splits.")
+    st.info("👋 Welcome! Please upload your raw refreshed 'survey_All_0.csv' file in the left sidebar to render the live tracking metrics.")
