@@ -2,19 +2,12 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration & Professional Styling
+# 1. Page Configuration & Native Styling
 st.set_page_config(page_title="IAG Global Tracker Dashboard", layout="wide")
 
-st.markdown("""
-    <style>
-    .main-title { font-size:28px; font-weight:bold; color:#1e3a8a; margin-bottom:5px; }
-    .subtitle { font-size:14px; color:#64748b; margin-bottom:20px; }
-    .metric-box { background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; }
-    </style>
-""", unsafe_allowed_html=True)
-
-st.markdown('<div class="main-title">📊 IAG Global Tracker Operations Portal</div>', unsafe_allowed_html=True)
-st.markdown('<div class="subtitle">Wave 2 & Week 3 Live Performance Ledger & Supplier Analytics</div>', unsafe_allowed_html=True)
+st.title("📊 IAG Global Tracker Operations Portal")
+st.caption("Wave 2 & Week 3 Live Performance Ledger & Supplier Analytics")
+st.markdown("---")
 
 # 2. Sidebar - Secure Ingestion & Handover Instructions
 st.sidebar.markdown("### 📥 Data Refresh Center")
@@ -30,7 +23,6 @@ st.sidebar.markdown("""
 
 # 3. Dynamic Calculation Pipeline
 if uploaded_file is not None:
-    # Read the data natively (fixes the Excel '###' truncation and copy-paste clipboard bugs)
     df = pd.read_csv(uploaded_file, low_memory=False)
     
     total_clicks = len(df)
@@ -42,15 +34,24 @@ if uploaded_file is not None:
     profit_dollars = "$1,066"
     target_achievement = "96%"
     
-    # Display Executive Metric Cards
+    # Display Executive Metric Cards using native safe blocks
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown(f"<div class='metric-box'><b>Overall Project Margin</b><br><span style='font-size:22px; font-weight:bold; color:#166534;'>{project_margin}</span> <span style='font-size:14px; color:#64748b;'>({profit_dollars} profit)</span></div>", unsafe_allowed_html=True)
+        with st.container(border=True):
+            st.markdown("**Overall Project Margin**")
+            st.markdown(f"### :green[{project_margin}]")
+            st.caption(f"{profit_dollars} profit")
     with col2:
-        st.markdown(f"<div class='metric-box'><b>Target Achievement Rate</b><br><span style='font-size:22px; font-weight:bold; color:#1e3a8a;'>{target_achievement}</span> <span style='font-size:14px; color:#64748b;'>Weekly Volume</span></div>", unsafe_allowed_html=True)
+        with st.container(border=True):
+            st.markdown("**Target Achievement Rate**")
+            st.markdown(f"### :blue[{target_achievement}]")
+            st.caption("Weekly Volume")
     with col3:
-        quota_full_global_pct = round((len(df[df['Respondent Status Description'] == 'Buyer_QuotaFull']) / total_clicks) * 100, 1)
-        st.markdown(f"<div class='metric-box'><b>Global Quota Full Rate</b><br><span style='font-size:22px; font-weight:bold; color:#991b1b;'>{quota_full_global_pct}%</span> <span style='font-size:14px; color:#64748b;'>Traffic Blocked</span></div>", unsafe_allowed_html=True)
+        with st.container(border=True):
+            st.markdown("**Global Quota Full Rate**")
+            quota_full_global_pct = round((len(df[df['Respondent Status Description'] == 'Buyer_QuotaFull']) / total_clicks) * 100, 1)
+            st.markdown(f"### :red[{quota_full_global_pct}%]")
+            st.caption("Traffic Blocked")
 
     st.markdown("---")
     
@@ -65,7 +66,7 @@ if uploaded_file is not None:
     ).reset_index()
     
     country_stats['Quota Full %'] = (country_stats['Quota_Fulls'] / country_stats['Total_Traffic'] * 100).round(1)
-    country_stats['Actual IR %'] = (country_stats['Completes'] / (country_stats['Completes'] + country_stats['Terminations']) * 100).round(1)
+    country_stats['Actual IR %'] = (country_stats['Completes'] / (country_stats['Completes'] + country_stats['Terminations'] + 1e-9) * 100).round(1)
     
     st.dataframe(country_stats.style.highlight_max(axis=0, color="#fee2e2", subset=['Quota Full %']), use_container_width=True)
     
@@ -91,14 +92,13 @@ if uploaded_file is not None:
     # 5. Supplier Cross-Tab Performance Matrix
     st.header("🏁 Supplier Allocation & Cell Performance Cross-Tab")
     
-    # Create clean supplier matrix metrics
     supplier_list = df['Supplier Name'].value_counts().index.tolist()
     matrix_data = []
     
     for supplier in supplier_list:
         row = {'Supplier Partner Name': supplier}
         s_completes = len(df[(df['Supplier Name'] == supplier) & (df['Respondent Status Description'] == 'Complete')])
-        row['Global Share %'] = f"{round((s_completes / total_completes) * 100, 1)}% ({s_completes} cases)"
+        row['Global Share %'] = f"{round((s_completes / (total_completes if total_completes > 0 else 1)) * 100, 1)}% ({s_completes} cases)"
         
         for country in country_stats['Survey Country']:
             sub = df[(df['Supplier Name'] == supplier) & (df['Survey Country'] == country)]
