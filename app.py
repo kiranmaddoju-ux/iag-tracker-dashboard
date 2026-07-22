@@ -47,7 +47,7 @@ if uploaded_file is not None:
         st.error(f"Required date column '{date_col}' missing from uploaded file.")
         st.stop()
 
-    # Dynamic Supplier Group Fallback Mapping (Perfect Master Pivot Alignment)
+    # Dynamic Supplier Group Fallback Mapping (Master Alignment Map)
     def clean_supplier_group(row):
         group = row['Supplier Group']
         supplier = str(row['Supplier Name']).strip()
@@ -56,8 +56,17 @@ if uploaded_file is not None:
         # Check if the data cell is blank/NaN
         is_blank = pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']
         
+        # --- UNITED STATES SPECIFIC ALIGNMENT ---
+        if country == 'United States':
+            if 'Prime Insights' in supplier:
+                return 'Prime Insights API'
+            if 'Social Loop' in supplier:
+                return 'Social Loop'
+            # Force everything else into US_Group_3
+            return 'US_Group_3'
+
         # --- INDIA SPECIFIC ALIGNMENT ---
-        if country == 'India':
+        elif country == 'India':
             if 'Prime Insights' in supplier:
                 return 'Prime Insights API'
             if is_blank or 'Group MP' in str(group) or supplier in ['Fusion', 'Prodege & Bitburst - Supplier', 'Rakuten - Supplier', 'Tap Research', 'Aspen Analytics', 'Persona.ly']:
@@ -92,10 +101,10 @@ if uploaded_file is not None:
                 if 'Tap Research' in supplier: return 'France_group_3'
             return group
 
-        # --- OTHER MARKETS FALLBACKS (US, Spain, etc.) ---
+        # --- OTHER MARKETS FALLBACKS (Spain, etc.) ---
         else:
             if is_blank:
-                country_map = {'United States': 'US', 'Spain': 'Spain'}
+                country_map = {'Spain': 'Spain'}
                 c_code = country_map.get(country, country)
                 if 'Prime Insights' in supplier: return f"{c_code}_Group_MP"
                 return f"{c_code}_Group_3"
