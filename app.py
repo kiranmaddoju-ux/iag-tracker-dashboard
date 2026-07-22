@@ -47,7 +47,7 @@ if uploaded_file is not None:
         st.error(f"Required date column '{date_col}' missing from uploaded file.")
         st.stop()
 
-    # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
+    # Dynamic Supplier Group Fallback Mapping (Country-Safe Version)
     def clean_supplier_group(row):
         group = row['Supplier Group']
         supplier = str(row['Supplier Name'])
@@ -66,15 +66,35 @@ if uploaded_file is not None:
         
         # Check if the group is blank/NaN
         if pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']:
-            # Rule 1: Prime Insights API always remains its own separate entity name globally
-            if 'Prime Insights' in supplier:
-                return 'Prime Insights API'
-                
-            # Rule 2: Redirect all other blank loop sources to Group 3
-            elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
-                return f"{c_code}_Group_3"
+            
+            # --- UNITED KINGDOM SPECIFIC RULES ---
+            if c_code == 'UK':
+                if 'Prime Insights' in supplier:
+                    return 'Prime Insights API' # Keeps it a separate entity for UK
+                elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
+                    return 'UK_Group_3'          # Routes blanks safely to Group 3
+                else:
+                    return supplier
+
+            # --- FRANCE SPECIFIC RULES (Kept exactly as initial blend requirements) ---
+            elif c_code == 'France':
+                if 'Prime Insights' in supplier:
+                    return 'France_group_3' # Or whichever specific composite block you want to target
+                elif 'CPX Research' in supplier:
+                    return 'France_group_2'
+                elif 'Tap Research' in supplier:
+                    return 'France_group_3'
+                else:
+                    return supplier
+
+            # --- OTHER GLOBAL MARKETS FALLBACKS ---
             else:
-                return supplier
+                if 'Prime Insights' in supplier:
+                    return f"{c_code}_Group_MP"
+                elif 'CPX Research' in supplier or 'Tap Research' in supplier or 'Prodege' in supplier:
+                    return f"{c_code}_Group_3"
+                else:
+                    return supplier
                 
         return group
 
