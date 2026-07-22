@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration & Setup
+# 1. Page Configuration & Title Styling
 st.set_page_config(page_title="IAG Global Tracker Blend Dashboard", layout="wide")
 
 st.title("📊 IAG Global Tracker Operations Portal")
@@ -47,6 +47,19 @@ if uploaded_file is not None:
         st.error(f"Required date column '{date_col}' missing from uploaded file.")
         st.stop()
 
+    # Dynamic Supplier Group Fallback Mapping (Clears up blanks natively)
+    def clean_supplier_group(row):
+        group = row['Supplier Group']
+        supplier = str(row['Supplier Name'])
+        
+        # If the group is blank, fill it directly with the name of the supplier vendor
+        if pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']:
+            return supplier
+        return group
+
+    # Apply the mapping transformation layer
+    df['Cleaned Supplier Group'] = df.apply(clean_supplier_group, axis=1)
+
     # Filter for Completes Only for the Blend calculations
     completes_only_df = df[df['Respondent Status Description'] == 'Complete'].copy()
     
@@ -84,7 +97,6 @@ if uploaded_file is not None:
         
         # Build Table 1: Supplier Blend by Week
         if not country_df.empty:
-            # Enforce tracking week columns to maintain structure even if a week is blank
             weeks_order = ["W1 (July 6-12)", "W2 (July 13-19)", "W3 (July 20+)"]
             
             pivot_supp = pd.crosstab(
@@ -92,7 +104,7 @@ if uploaded_file is not None:
                 country_df['Tracking Week']
             )
             
-            # Ensure all tracking weeks exist in the columns for structural continuity
+            # Keep column indexes structurally intact
             for w in weeks_order:
                 if w not in pivot_supp.columns:
                     pivot_supp[w] = 0
@@ -101,7 +113,6 @@ if uploaded_file is not None:
             pivot_supp.loc['Grand Total'] = pivot_supp.sum()
             pivot_supp['Total'] = pivot_supp.sum(axis=1)
             
-            # Construct Final Clean Data Display with Percentages
             blend_table = pd.DataFrame(index=pivot_supp.index)
             for week in weeks_order:
                 blend_table[week] = pivot_supp[week]
@@ -120,12 +131,11 @@ if uploaded_file is not None:
                 
             st.dataframe(blend_table, use_container_width=True)
             
-            # Build Table 2: Composite Group Summary
+            # Build Table 2: Composite Group Summary (Cleaned - Blanks Replaced by Vendor Name)
             st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
             
-            group_col = 'Supplier Group'
             pivot_group = pd.crosstab(
-                country_df[group_col].fillna('(blank)'), 
+                country_df['Cleaned Supplier Group'], 
                 country_df['Tracking Week']
             )
             
