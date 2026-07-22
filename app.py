@@ -152,27 +152,62 @@ if uploaded_file is not None:
             blend_table['Total %'] = (pivot_supp['Total'] / tot_glob * 100).round(2).astype(str) + "%" if tot_glob > 0 else "0.00%"
             st.dataframe(blend_table, use_container_width=True)
             
-            # Build Table 2: Composite Summary Table
+            # Build Table 2: Hierarchical Composite Group Summary
             st.markdown(f"## 👥 {selected_country} - Supplier Group (Composite) Summary (Completes Only)")
+            st.caption("Click any group header row below to expand and view the underlying supplier breakdown.")
+
+            # Calculate total cross-tabs for the group level
             pivot_group = pd.crosstab(country_df['Cleaned Supplier Group'], country_df['Tracking Week'])
             for w in weeks_order:
                 if w not in pivot_group.columns: pivot_group[w] = 0
-                    
             pivot_group = pivot_group[weeks_order].copy()
-            pivot_group.loc['Grand Total'] = pivot_group.sum()
-            pivot_group['Total'] = pivot_group.sum(axis=1)
             
-            group_table = pd.DataFrame(index=pivot_group.index)
-            for week in weeks_order:
-                group_table[week] = pivot_group[week]
-                tot_g = pivot_group.loc['Grand Total', week]
-                group_table[f"{week} %"] = (pivot_group[week] / tot_g * 100).round(2).astype(str) + "%" if tot_g > 0 else "0.00%"
+            # Extract unique groups sorted cleanly, excluding the Grand Total for individual calculation loops
+            unique_groups = sorted([g for g in pivot_group.index if g != 'Grand Total'])
+            
+            # Calculate column totals for global referencing
+            grand_total_w1 = country_df[country_df['Tracking Week'] == "W1 (July 6-12)"].shape[0]
+            grand_total_w2 = country_df[country_df['Tracking Week'] == "W2 (July 13-19)"].shape[0]
+            grand_total_w3 = country_df[country_df['Tracking Week'] == "W3 (July 20+)"].shape[0]
+            overall_total = country_df.shape[0]
+
+            # Render each group as an expandable section panel
+            for group_name in unique_groups:
+                # 1. Gather group-specific volumes
+                g_df = country_df[country_df['Cleaned Supplier Group'] == group_name]
+                g_w1 = g_df[g_df['Tracking Week'] == "W1 (July 6-12)"].shape[0]
+                g_w2 = g_df[g_df['Tracking Week'] == "W2 (July 13-19)"].shape[0]
+                g_w3 = g_df[g_df['Tracking Week'] == "W3 (July 20+)"].shape[0]
+                g_tot = g_df.shape[0]
+                
+                # Compute exact share percentages relative to the week's total market completions
+                p_w1 = f"{(g_w1 / grand_total_w1 * 100):.2f}%" if grand_total_w1 > 0 else "0.00%"
+                p_w2 = f"{(g_w2 / grand_total_w2 * 100):.2f}%" if grand_total_w2 > 0 else "0.00%"
+                p_w3 = f"{(g_w3 / grand_total_w3 * 100):.2f}%" if grand_total_w3 > 0 else "0.00%"
+                p_tot = f"{(g_tot / overall_total * 100):.2f}%" if overall_total > 0 else "0.00%"
+
+                # 2. Render an elegant summary header block that simulates a pivot row
+                header_label = f"➕ **{group_name}** ｜ W1: {g_w1} ({p_w1}) ｜ W2: {g_w2} ({p_w2}) ｜ W3: {g_w3} ({p_w3}) ｜ Total: {g_tot} ({p_tot})"
+                
+                with st.expander(header_label, expanded=False):
+                    # 3. Inside the expander, construct the detailed nested matrix view
+                    pivot_sub = pd.crosstab(g_df['Supplier Name'], g_df['Tracking Week'])
+                    for w in weeks_order:
+                        if w not in pivot_sub.columns: pivot_sub[w] = 0
+                    pivot_sub = pivot_sub[weeks_order].copy()
                     
-            group_table['Total'] = pivot_group['Total']
-            tot_gg = pivot_group.loc['Grand Total', 'Total']
-            group_table['Total %'] = (pivot_group['Total'] / tot_gg * 100).round(2).astype(str) + "%" if tot_gg > 0 else "0.00%"
-            st.dataframe(group_table, use_container_width=True)
-        else:
-            st.warning(f"No complete records currently available for {selected_country} in the uploaded dataset.")
-else:
-    st.info("👋 Welcome! Please upload your tracking data CSV file in the left sidebar to generate the live supplier blend splits.")
+                    sub_table = pd.DataFrame(index=pivot_sub.index)
+                    for week in weeks_order:
+                        sub_table[week] = pivot_sub[week]
+                        # Percentage contribution of this specific supplier relative to the WHOLE week's total
+                        sub_table[f"{week} %"] = (pivot_sub[week] / (grand_total_w1 if "W1" in week else grand_total_w2 if "W2" in week else grand_total_w3) * 100).round(2).astype(str) + "%"
+                    
+                    sub_table['Total'] = pivot_sub.sum(axis=1)
+                    sub_table['Total %'] = (sub_table['Total'] / overall_total * 100).round(2).astype(str) + "%"
+                    
+                    st.markdown("*Underlying Member Details:*")
+                    st.dataframe(sub_table, use_container_width=True)
+            
+            # 4. Global Grand Summary Footer
+            st.markdown("---")
+            st.markdown(f"📊 **Market Grand Total Summary** ｜ **W1:** {grand_total_
