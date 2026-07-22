@@ -47,7 +47,7 @@ if uploaded_file is not None:
         st.error(f"Required date column '{date_col}' missing from uploaded file.")
         st.stop()
 
-    # Master Core Rule Alignment Map
+    # Dynamic Supplier Group Fallback Mapping (Perfect Master Pivot Alignment)
     def clean_supplier_group(row):
         group = row['Supplier Group']
         supplier = str(row['Supplier Name']).strip()
@@ -56,18 +56,21 @@ if uploaded_file is not None:
         # Check if the data cell is blank/NaN
         is_blank = pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']
         
-        # --- FRANCE ---
-        if country == 'France':
-            if is_blank:
-                if 'Prime Insights' in supplier: return 'France_group_3'
-                if 'CPX Research' in supplier: return 'France_group_2'
-                if 'Tap Research' in supplier: return 'France_group_3'
+        # --- INDIA SPECIFIC ALIGNMENT ---
+        if country == 'India':
+            if 'Prime Insights' in supplier:
+                return 'Prime Insights API' # Stands alone as its own separate row entity
+            # Force exact Group MP name alignment without adding an "India_" prefix
+            if is_blank or 'Group MP' in str(group) or supplier in ['Fusion', 'Prodege & Bitburst - Supplier', 'Rakuten - Supplier', 'Tap Research', 'Aspen Analytics', 'Persona.ly']:
+                return 'Group MP'
+            if 'India_Group_2' in str(group) or supplier in ['AttaPoll', 'CPX Research']:
+                return 'India_Group_2'
             return group
 
         # --- UNITED KINGDOM ---
         elif country == 'United Kingdom':
             if 'Prime Insights' in supplier: 
-                return 'Prime Insights API' # Explicitly isolated separate entity rule
+                return 'Prime Insights API'
             if is_blank or 'UK_Group_3' in str(group) or 'CPX' in supplier or 'Prodege' in supplier or 'Tap' in supplier:
                 if 'Fusion' in supplier: return 'UK_Group_2'
                 return 'UK_Group_3'
@@ -76,49 +79,28 @@ if uploaded_file is not None:
         # --- IRELAND ---
         elif country == 'Ireland':
             if 'Prime Insights' in supplier: 
-                return 'Prime Insights API' # Match your excel screenshot mapping
+                return 'Prime Insights API'
             if is_blank:
                 if supplier in ['AttaPoll', 'Fusion']: return 'Ireland_Group_2'
                 return 'Ireland_Group_3'
             return group
 
-        # --- ALL OTHER GLOBAL MARKETS DEFAULT AUTOMATION ---
+        # --- FRANCE ---
+        elif country == 'France':
+            if is_blank:
+                if 'Prime Insights' in supplier: return 'France_group_3'
+                if 'CPX Research' in supplier: return 'France_group_2'
+                if 'Tap Research' in supplier: return 'France_group_3'
+            return group
+
+        # --- OTHER MARKETS FALLBACKS (US, Spain, etc.) ---
         else:
             if is_blank:
-                country_map = {'United States': 'US', 'Spain': 'Spain', 'India': 'India'}
+                country_map = {'United States': 'US', 'Spain': 'Spain'}
                 c_code = country_map.get(country, country)
                 if 'Prime Insights' in supplier: return f"{c_code}_Group_MP"
                 return f"{c_code}_Group_3"
             return group
-
-    # Execute custom clean mapping layer
-    df['Cleaned Supplier Group'] = df.apply(clean_supplier_group, axis=1)
-
-    # Filter for Completes Only for the Blend calculations
-    completes_only_df = df[df['Respondent Status Description'] == 'Complete'].copy()
-    
-    # Global Overview Metrics
-    total_completes = len(completes_only_df)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        with st.container(border=True):
-            st.markdown("**Total Accumulated Completes**")
-            st.markdown(f"### :green[{total_completes} Cases]")
-            st.caption("All weeks combined")
-    with col2:
-        with st.container(border=True):
-            st.markdown("**Active Tracker Markets**")
-            st.markdown("### 6 Countries")
-            st.caption("France, India, IE, ES, UK, US")
-    with col3:
-        with st.container(border=True):
-            w3_count = len(completes_only_df[completes_only_df['Tracking Week'] == "W3 (July 20+)"])
-            st.markdown("**Week 3 Completes Progress**")
-            st.markdown(f"### :blue[{w3_count} Cases]")
-            st.caption("Pacing from July 20 onward")
-
-    st.markdown("---")
     
     # 4. Market Selector Dropdown
     countries = ['France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
