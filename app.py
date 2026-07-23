@@ -56,8 +56,17 @@ if uploaded_file is not None:
         # Check if the data cell is blank/NaN
         is_blank = pd.isna(group) or str(group).strip().lower() in ['nan', '', '(blank)']
         
+        # --- FRANCE SPECIFIC ALIGNMENT ---
+        if country == 'France':
+            if 'Prime Insights' in supplier:
+                return 'Prime Insights API'
+            if 'CPX Research' in supplier or 'Prodege' in supplier:
+                return 'France_group_2'
+            # Force all remaining non-prime suppliers into group_3_Group MP
+            return 'France_group_3_Group MP'
+
         # --- UNITED STATES SPECIFIC ALIGNMENT ---
-        if country == 'United States':
+        elif country == 'United States':
             if 'Prime Insights' in supplier:
                 return 'Prime Insights API'
             if 'Social Loop' in supplier:
@@ -90,28 +99,6 @@ if uploaded_file is not None:
             if is_blank:
                 if supplier in ['AttaPoll', 'Fusion']: return 'Ireland_Group_2'
                 return 'Ireland_Group_3'
-            return group
-
-        # --- FRANCE SPECIFIC ALIGNMENT ---
-        elif country == 'France':
-            if 'Prime Insights' in supplier:
-                return 'Prime Insights API' # Break it out as its own standalone entity row
-            
-            # If the group tag in the raw data is completely blank
-            if is_blank:
-                if 'CPX Research' in supplier or 'Prodege' in supplier:
-                    return 'France_group_2'
-                if supplier in ['Aspen Analytics', 'AttaPoll', 'Fusion', 'Tap Research', 'Theorem Reach']:
-                    return 'France_group_3'
-                return 'France_group_3' # Safe fallback for unknown blanks
-            
-            # If a group string is present in the raw file, clean its label naming styles
-            if 'group_2' in str(group).lower():
-                return 'France_group_2'
-            if 'group_3_group mp' in str(group).lower() or 'group_mp' in str(group).lower():
-                return 'France_group_3_Group MP'
-            if 'group_3' in str(group).lower():
-                return 'France_group_3'
             return group
 
         # --- OTHER MARKETS FALLBACKS (Spain, etc.) ---
@@ -152,12 +139,11 @@ if uploaded_file is not None:
 
     st.markdown("---")
     
-    # 4. Market Selector Dropdown (Added Overall View Option)
+    # 4. Market Selector Dropdown
     countries_options = ['Overall / All Markets', 'France', 'India', 'Ireland', 'Spain', 'United Kingdom', 'United States']
     selected_country = st.selectbox("🌐 Select Market Country to View Supplier Blend Splits:", countries_options)
     
     if selected_country:
-        # If 'Overall' is chosen, process the entire completes dataset together
         if selected_country == 'Overall / All Markets':
             country_df = completes_only_df
             st.markdown(f"## 🏛️ Global Overview - Supplier Performance Breakdown (All Markets Combined)")
@@ -231,7 +217,6 @@ if uploaded_file is not None:
                 st.markdown(f"📋 **{selected_country} - Pre-Defined Internal Allocation Reference Rules**")
             
             try:
-                # Core Engine Safeguard: Dynamically check or handle openpyxl installation on cloud
                 try:
                     import openpyxl
                 except ImportError:
@@ -239,13 +224,9 @@ if uploaded_file is not None:
                     import sys
                     subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
                 
-                # Read the file directly from the GitHub repository folder
                 master_excel = pd.read_excel("internal_master_rules.xlsx", header=None)
-                
-                # Fill down Country names from Column A to fix the spacing gap rows
                 master_excel[0] = master_excel[0].ffill()
                 
-                # Filter rows matching the active selector market country name (or show all if Overall)
                 if selected_country == 'Overall / All Markets':
                     matched_rows = master_excel.dropna(subset=[1, 2, 3])
                 else:
@@ -253,7 +234,6 @@ if uploaded_file is not None:
                 
                 if not matched_rows.empty:
                     sub_data = []
-                    # Add a country header column if viewing the Overall option
                     headers = ["Country", "Group Assignments", "supNm", "Allocation"] if selected_country == 'Overall / All Markets' else ["Group Assignments", "supNm", "Allocation"]
                     
                     for idx, row in matched_rows.iterrows():
@@ -262,16 +242,13 @@ if uploaded_file is not None:
                         val_c = str(row[2]).strip()
                         val_d = str(row[3]).strip()
                         
-                        # Exclude duplicate structural text headers inside the blocks
                         if val_b.lower() == "group assignments" or (val_b == "nan" and val_c == "nan" and val_d == "nan"):
                             continue
                             
-                        # Clean up displays for empty cell fields safely
                         disp_a = "" if val_a == "nan" else val_a
                         disp_b = "" if val_b == "nan" else val_b
                         disp_c = "" if val_c == "nan" else val_c
                         
-                        # Smart Decimal/Percentage Formatter for Allocation Target Output Column
                         disp_d = ""
                         if val_d != "nan":
                             try:
@@ -292,9 +269,9 @@ if uploaded_file is not None:
                         reference_df = pd.DataFrame(sub_data, columns=headers)
                         st.dataframe(reference_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"ℹ️ Internal master allocation reference data is empty.")
+                        st.info(f"ℹ--------- Internal master allocation reference data is empty.")
                 else:
-                    st.info(f"ℹ️ No internal target rules are currently listed in the master Excel sheet.")
+                    st.info(f"ℹ--------- No internal target rules are currently listed in the master Excel sheet.")
                     
             except FileNotFoundError:
                 st.info("💡 **Operational Note:** To display your master definitions here, name your created workbook `internal_master_rules.xlsx` and push it to your GitHub directory right next to `app.py`!")
