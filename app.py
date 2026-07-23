@@ -92,12 +92,26 @@ if uploaded_file is not None:
                 return 'Ireland_Group_3'
             return group
 
-        # --- FRANCE ---
+        # --- FRANCE SPECIFIC ALIGNMENT ---
         elif country == 'France':
+            if 'Prime Insights' in supplier:
+                return 'Prime Insights API' # Break it out as its own standalone entity row
+            
+            # If the group tag in the raw data is completely blank
             if is_blank:
-                if 'Prime Insights' in supplier: return 'France_group_3'
-                if 'CPX Research' in supplier: return 'France_group_2'
-                if 'Tap Research' in supplier: return 'France_group_3'
+                if 'CPX Research' in supplier or 'Prodege' in supplier:
+                    return 'France_group_2'
+                if supplier in ['Aspen Analytics', 'AttaPoll', 'Fusion', 'Tap Research', 'Theorem Reach']:
+                    return 'France_group_3'
+                return 'France_group_3' # Safe fallback for unknown blanks
+            
+            # If a group string is present in the raw file, clean its label naming styles
+            if 'group_2' in str(group).lower():
+                return 'France_group_2'
+            if 'group_3_group mp' in str(group).lower() or 'group_mp' in str(group).lower():
+                return 'France_group_3_Group MP'
+            if 'group_3' in str(group).lower():
+                return 'France_group_3'
             return group
 
         # --- OTHER MARKETS FALLBACKS (Spain, etc.) ---
